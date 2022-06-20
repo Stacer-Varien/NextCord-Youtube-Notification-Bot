@@ -1,5 +1,5 @@
 from re import search
-from nextcord import ChannelType, Embed, Interaction, SlashOption
+from nextcord import ChannelType, Interaction, SlashOption, Intents, SyncWebhook
 from nextcord.abc import GuildChannel
 from os import getenv
 from sqlite3 import connect
@@ -7,7 +7,8 @@ from nextcord.ext import commands, tasks
 from dotenv import load_dotenv
 from requests import get
 
-bot = commands.Bot(command_prefix="?")
+webhook_intent=Intents(webhooks=True)
+bot = commands.Bot(intents=webhook_intent)
 db = connect('youtubedata.db')
 
 load_dotenv()
@@ -21,10 +22,10 @@ async def on_ready():
     #starting checking for vidoes everytime the bot's go online
     checkforvideos.start()
 
-#checking for videos every minute
+#checking for videos every 5 minutes
 
 
-@tasks.loop(minutes=1)
+@tasks.loop(minutes=5)
 async def checkforvideos():
 
   #printing here to show
@@ -62,9 +63,9 @@ async def checkforvideos():
       db.commit()
 
       #getting the channel to send the message
-      discord_channel_id = db.execute(
-          "SELECT notifier_channel FROM youtube WHERE channel_id = ?", (i[0],)).fetchone()
-      discord_channel = bot.get_channel(int(discord_channel_id[0]))
+      webhook_url = db.execute(
+          "SELECT webhook FROM youtube WHERE channel_id = ?", (i[0],)).fetchone()
+      webhook = SyncWebhook.from_url(webhook_url[0])
 
       #sending the msg in discord channel
       #you can mention any role like this if you want
@@ -81,38 +82,11 @@ async def checkforvideos():
       #if you'll send the url discord will automaitacly create embed for it
       #if you don't want to send embed for it then do <{latest_video_url}>
 
-      await discord_channel.send(msg)
+      webhook.send(msg)
+      print(f"{latest_video_url} found and posted")
 
 #creating command to add more youtube accounds data in youtubedata.db file
 
 
-@bot.slash_command()
-@commands.has_permissions(manage_guild=True)
-async def add_youtube_notification_data(ctx: Interaction, channel_id=SlashOption(description="Add a YouTube channel ID", required=True), channel_name=SlashOption(description="Add the name of the YouTube channel"), notifier_channel: GuildChannel = SlashOption(description="Which channel do you want the updates to be posted", channel_types=[ChannelType.text, ChannelType.news], required=True), mention=SlashOption(description="What role or ping should be mentioned?", required=False)):
-
-  if mention == None:
-    mention = "None"
-
-  db.execute("INSERT OR IGNORE INTO youtube (channel_id, channel_name, latest_video, notifier_channel, mention) VALUES (?,?,?,?,?)",
-             (channel_id, channel_name, 'None', notifier_channel.id, mention))
-  db.commit()
-
-  await ctx.send("Added Your Account Data!")
-
-#you can also create this command if you ever want to stop notifying
-
-
-@bot.slash_command(description="Stops notifying")
-async def stop_notifying(ctx: Interaction):
-  checkforvideos.stop()
-  await ctx.send("Stoped Notifying")
-
-#you can also create this command to start notifying but we're gonna do so that everytime the bot goes online it will automaitacly starts notifying
-
-
-@bot.slash_command(description="Start notifying (on by default)")
-async def start_notifying(ctx: Interaction):
-  checkforvideos.start()
-  await ctx.send("Now Notifying")
 
 bot.run(TOKEN)
